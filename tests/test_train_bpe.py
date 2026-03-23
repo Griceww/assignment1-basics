@@ -1,9 +1,9 @@
 import json
 import time
 
-from .adapters import run_train_bpe
-from .common import FIXTURES_PATH, gpt2_bytes_to_unicode
-
+from tests.adapters import run_train_bpe
+from tests.common import FIXTURES_PATH, gpt2_bytes_to_unicode
+from pathlib import Path
 
 def test_train_bpe_speed():
     """
@@ -86,3 +86,13 @@ def test_train_bpe_special_tokens(snapshot):
             "merges": merges,
         },
     )
+
+# def test_tmp():
+#     input_path = Path(__file__).parent.parent / "data" / "TinyStoriesV2-GPT4-train.txt"
+#                   # "TinyStoriesV2-GPT4-valid.txt"
+                  
+#     vocab, merges = run_train_bpe(
+#         input_path=input_path,
+#         vocab_size=10000,
+#         special_tokens=["<|endoftext|>"],
+#     )

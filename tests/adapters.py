@@ -9,6 +9,13 @@ import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
+import multiprocessing
+import regex as re
+from collections import Counter, defaultdict
+import heapq
+from cs336_basics.pretokenization_example import find_chunk_boundaries
+from cs336_basics.tokenizer import Tokenizer
+
 
 def run_linear(
     d_in: int,
@@ -559,8 +566,27 @@ def get_tokenizer(
     Returns:
         A BPE tokenizer that uses the provided vocab, merges, and special tokens.
     """
-    raise NotImplementedError
+    return Tokenizer(vocab, merges, special_tokens)
 
+def  pre_tokenization(
+    args
+):
+    chunk, special_tokens = args
+    # print(chunk)
+    pattern = "|".join(re.escape(token) for token in special_tokens)
+    # print("-" * 60)
+    chunks = re.split(pattern=pattern, string=chunk)
+    # print(chunks)
+    # print("-" * 60)
+    PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    counts = Counter()
+    for item in chunks:
+        for match in re.finditer(PAT, item):
+            token = match.group()
+            counts.update([token.encode("utf-8")])
+    # print(counts)
+    # print("=" * 60)
+    return counts
 
 def run_train_bpe(
     input_path: str | os.PathLike,
@@ -589,4 +615,122 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    raise NotImplementedError
+
+    chunk_args = []
+    with open(input_path, "rb") as f:
+        num_processes = 50
+        boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+
+        # for start, end in zip(boundaries[:-1], boundaries[1:]):
+        #     f.seek(start)
+        #     chunk = f.read(end - start).decode("utf-8", errors="ignore")
+        #     chunk_args.append((chunk, special_tokens))
+    
+    def chunk_generator(path, boundaries, specials):
+        with open(path, "rb") as f:
+            for start, end in zip(boundaries[:-1], boundaries[1:]):
+                f.seek(start)
+                chunk = f.read(end - start).decode("utf-8", errors="ignore")
+                yield (chunk, specials)
+
+    print(len(chunk_args))
+    global_counts = Counter()
+    with multiprocessing.Pool() as pool:
+        counts = pool.imap(pre_tokenization, chunk_generator(input_path, boundaries, special_tokens))
+        for item in counts:
+            global_counts.update(item)
+    
+    print(global_counts)
+
+    vocab : dict[int, bytes] = {idx : bytes([idx]) for idx in range(256)}
+    merges : list[tuple[bytes, bytes]] = []
+    
+    for i, token in enumerate(special_tokens):
+        vocab[256 + i] = token.encode("utf-8")
+
+    num_merges = vocab_size - len(vocab)
+
+    all_words_bytes = list(global_counts.keys())
+    ids_list = [list(b) for b in all_words_bytes]
+    word_counts = list(global_counts.values())
+
+    stats = Counter()
+    pair_indices = defaultdict(set)
+
+    for word_idx, (tokens, freq) in enumerate(zip(ids_list, word_counts)) :
+        for pair in zip(tokens[:-1], tokens[1:]) :
+            stats[pair] += freq
+            pair_indices[pair].add(word_idx)
+
+    # Optimization: Use a heap for finding best pair
+    class MaxHeapEntry:
+        __slots__ = ('sort_key', 'pair')
+        def __init__(self, count, p0_b, p1_b, pair):
+            self.sort_key = (count, p0_b, p1_b)
+            self.pair = pair
+        def __lt__(self, other):
+            return self.sort_key > other.sort_key
+
+    pq = []
+    for pair, count in stats.items():
+        heapq.heappush(pq, MaxHeapEntry(count, vocab[pair[0]], vocab[pair[1]], pair))
+
+    for i in range(num_merges):
+        # Find the most frequent pair
+        best_pair = None
+        while pq:
+            entry = heapq.heappop(pq)
+            if stats.get(entry.pair, -1) == entry.sort_key[0]:
+                best_pair = entry.pair
+                break
+        
+        if best_pair is None:
+            break
+
+        p0, p1 = best_pair
+        new_id = len(vocab)
+        merges.append((vocab[p0], vocab[p1]))
+        vocab[new_id] = vocab[p0] + vocab[p1]
+        
+        words_to_update = list(pair_indices[best_pair])
+        del stats[best_pair]
+        del pair_indices[best_pair]
+
+        touched_pairs = set()
+
+        for word_idx in words_to_update:
+            word = ids_list[word_idx]
+            freq = word_counts[word_idx]
+
+            new_word = []
+            idx = 0
+            while idx < len(word):
+                if idx < len(word) - 1 and word[idx] == p0 and word[idx+1] == p1:
+                    new_word.append(new_id)
+                    idx += 2
+                else:
+                    new_word.append(word[idx])
+                    idx += 1
+            
+            for p in zip(word[:-1], word[1:]):
+                if p == best_pair: continue 
+                stats[p] -= freq
+                touched_pairs.add(p)
+                if stats[p] == 0: del stats[p]
+                if p in pair_indices:
+                    pair_indices[p].discard(word_idx)
+                    if not pair_indices[p]: del pair_indices[p]
+
+            for p in zip(new_word[:-1], new_word[1:]):
+                stats[p] += freq
+                touched_pairs.add(p)
+                pair_indices[p].add(word_idx)
+            
+            ids_list[word_idx] = new_word
+
+        for p in touched_pairs:
+            if p in stats:
+                heapq.heappush(pq, MaxHeapEntry(stats[p], vocab[p[0]], vocab[p[1]], p))
+
+    return vocab, merges
+
