@@ -37,30 +37,28 @@ class Tokenizer:
 
     @classmethod
     def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None):
-        # Load vocab and merges from files
         with open(vocab_filepath, "r", encoding="utf-8") as f:
-            # Ensure keys are ints and values are bytes
-            vocab = {}
             raw_vocab = json.load(f)
+            vocab = {}
             for k, v in raw_vocab.items():
                 if isinstance(v, str):
-                    # Handle case where json only has unicode strings
-                    # For a byte-level BPE, we might need a mapping. 
-                    # Assuming standard implementation where vocab stores byte repr
-                    # But JSON can't store bytes directly. 
-                    # Usually it's stored as mapped characters (like GPT-2) or just strings?
-                    # Given the context of assignment, we assume simple casting if needed
-                    vocab[int(k)] = v.encode('utf-8') 
+                    vocab[int(k)] = v.encode("utf-8")
                 else:
                     vocab[int(k)] = bytes(v)
 
         with open(merges_filepath, "r", encoding="utf-8") as f:
-            merges = []
-            for line in f:
-                # Merges expected format: "tokenA tokenB" (space separated)
+            content = f.read().strip()
+
+        merges: list[tuple[bytes, bytes]] = []
+        if content.startswith("["):
+            raw_merges = json.loads(content)
+            for pair in raw_merges:
+                merges.append((bytes(pair[0]), bytes(pair[1])))
+        else:
+            for line in content.splitlines():
                 parts = line.rstrip().split(" ")
                 if len(parts) == 2:
-                   merges.append((parts[0].encode("utf-8"), parts[1].encode("utf-8")))
+                    merges.append((parts[0].encode("utf-8"), parts[1].encode("utf-8")))
 
         return cls(vocab, merges, special_tokens)
     

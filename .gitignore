@@ -165,3 +165,7 @@ cython_debug/
 data/
 profile_output.txt
 .python-version
+
+checkpoints/
+outputs/
+wandb/
