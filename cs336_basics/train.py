@@ -3,6 +3,7 @@
 import argparse
 import os
 import time
+import wandb
 
 import numpy as np
 import torch
@@ -14,6 +15,9 @@ from cs336_basics.gradient_clipping import clip_gradients
 from cs336_basics.checkpointing import save_checkpoint, load_checkpoint
 from cs336_basics.get_batch import get_batch
 from cs336_basics.cross_entropy import cross_entropy
+
+WANDB_DEFAULT_ENTITY = "grice20040102-central-south-university"
+WANDB_DEFAULT_PROJECT = "cs336-assignment1-experiments"
 
 
 def parse_args():
@@ -58,8 +62,10 @@ def parse_args():
     p.add_argument("--checkpoint_dir", type=str, default="checkpoints")
     p.add_argument("--resume", type=str, default=None,
                     help="Path to checkpoint to resume from")
-    p.add_argument("--wandb_project", type=str, default=None,
-                    help="If set, enable wandb logging under this project name")
+    p.add_argument("--use_wandb", action="store_true",
+                    help="Enable W&B logging for experiment tracking")
+    p.add_argument("--wandb_run_name", type=str, default=None,
+                    help="Optional W&B run name for grouping scans/ablations")
 
     return p.parse_args()
 
@@ -88,9 +94,14 @@ def main():
     min_lr = args.lr * args.min_lr_ratio
 
     # --- wandb ---
-    if args.wandb_project:
-        import wandb
-        wandb.init(project=args.wandb_project, config=vars(args))
+    run = None
+    if args.use_wandb:
+        run = wandb.init(
+            entity=WANDB_DEFAULT_ENTITY,
+            project=WANDB_DEFAULT_PROJECT,
+            name=args.wandb_run_name,
+            config=vars(args),
+        )
 
     # --- data ---
     train_data = np.memmap(args.train_data, dtype=np.uint16, mode="r")
@@ -129,6 +140,7 @@ def main():
     os.makedirs(args.checkpoint_dir, exist_ok=True)
 
     # --- training loop ---
+    train_start_time = time.time()
     for it in range(start_iter, args.max_iters):
         t0 = time.time()
 
@@ -152,13 +164,25 @@ def main():
         optimizer.zero_grad()
 
         dt = time.time() - t0
+        elapsed_time_sec = time.time() - train_start_time
+        # Track cumulative processed tokens for cross-run comparability.
+        tokens_seen = (it + 1) * args.batch_size * args.context_length
 
         # --- logging ---
         if it % args.log_interval == 0:
             print(f"iter {it:>6d} | loss {loss.item():.4f} | lr {new_lr:.6f} | {dt*1000:.0f}ms")
-            if args.wandb_project:
-                import wandb
-                wandb.log({"train_loss": loss.item(), "lr": new_lr, "iteration": it})
+            if run is not None:
+                run.log(
+                    {
+                        "train/loss": loss.item(),
+                        "optimizer/lr": new_lr,
+                        "system/iteration_time_ms": dt * 1000.0,
+                        "system/elapsed_time_sec": elapsed_time_sec,
+                        "data/tokens_seen": tokens_seen,
+                        "train/step": it,
+                    },
+                    step=it,
+                )
 
         # --- eval ---
         if it > 0 and it % args.eval_interval == 0:
@@ -167,24 +191,45 @@ def main():
                 args.device, args.eval_batches,
             )
             print(f"iter {it:>6d} | val_loss {val_loss:.4f}")
-            if args.wandb_project:
-                import wandb
-                wandb.log({"val_loss": val_loss, "iteration": it})
+            if run is not None:
+                run.log(
+                    {
+                        "eval/val_loss": val_loss,
+                        "system/elapsed_time_sec": elapsed_time_sec,
+                        "data/tokens_seen": tokens_seen,
+                        "eval/step": it,
+                    },
+                    step=it,
+                )
 
         # --- checkpoint ---
         if it > 0 and it % args.checkpoint_interval == 0:
             ckpt_path = os.path.join(args.checkpoint_dir, f"checkpoint_{it}.pt")
             save_checkpoint(model, optimizer, it, ckpt_path)
             print(f"iter {it:>6d} | saved checkpoint to {ckpt_path}")
+            if run is not None:
+                run.log(
+                    {
+                        "checkpoint/step": it,
+                        "system/elapsed_time_sec": elapsed_time_sec,
+                    },
+                    step=it,
+                )
 
     # --- final save ---
     ckpt_path = os.path.join(args.checkpoint_dir, f"checkpoint_{args.max_iters}.pt")
     save_checkpoint(model, optimizer, args.max_iters, ckpt_path)
     print(f"Training complete. Final checkpoint saved to {ckpt_path}")
 
-    if args.wandb_project:
-        import wandb
-        wandb.finish()
+    if run is not None:
+        run.log(
+            {
+                "train/final_step": args.max_iters,
+                "system/total_elapsed_time_sec": time.time() - train_start_time,
+            },
+            step=args.max_iters,
+        )
+        run.finish()
 
 
 if __name__ == "__main__":

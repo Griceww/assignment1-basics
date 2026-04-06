@@ -22,6 +22,23 @@ class RotaryPositionalEmbedding(torch.nn.Module):
         token positions '(..., seq_len)'
         return          '(..., seq_len, d_k)'
         """
+        if token_positions.shape[-1] != x.shape[-2]:
+            raise ValueError(
+                f"token_positions last dim ({token_positions.shape[-1]}) "
+                f"must equal sequence length ({x.shape[-2]})."
+            )
+
+        # Allow token_positions to omit some leading dims (e.g. missing head dim).
+        # We insert singleton axes before the sequence axis so broadcasting matches x.
+        while token_positions.ndim < x.ndim - 1:
+            token_positions = token_positions.unsqueeze(-2)
+
+        if token_positions.ndim != x.ndim - 1:
+            raise ValueError(
+                f"token_positions ndim ({token_positions.ndim}) must be x.ndim - 1 ({x.ndim - 1})."
+            )
+
+        token_positions = token_positions.to(device=x.device, dtype=torch.long)
         cos = self.cos_cached[token_positions].to(dtype=x.dtype, device=x.device)
         sin = self.sin_cached[token_positions].to(dtype=x.dtype, device=x.device)
         x1 = x[..., ::2]

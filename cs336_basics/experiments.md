@@ -85,15 +85,15 @@
 
 > **示例 (ts_generate_example)：TinyStories 语言模型的样本输出**
 > 
-> 从前，有一个叫莉莉的漂亮女孩。她喜欢吃口香糖，尤其是那种大的黑色的。有一天，莉莉的妈妈让她帮忙做晚饭。莉莉非常兴奋！她喜欢帮妈妈的忙。莉莉的妈妈晚饭做了一大锅汤。莉莉非常高兴，说：“谢谢你，妈妈！我爱你。”她帮妈妈把汤倒进一个大碗里。晚饭后，莉莉的妈妈做了一些美味的汤。莉莉很喜欢！她说：“谢谢你，妈妈！这个汤太好喝了！”她妈妈笑着说：“很高兴你喜欢，莉莉。”她们做完了饭，并继续一起做饭。结束。
+> Once upon a time,there was a pretty girl named Lily. She loved to eat gum,especially the big black one. Oneday,Lily’s mom asked her to help cook dinner. Lily was so excited! She loved to help her mom.Lily’s mom made a big pot of soup for dinner. Lily was so happy and said, “Thank you, Mommy! I love you.”She helped her mom pour the soup into a big bowl.After dinner, Lily’s mom made some yummy soup.Lily love dit! She said,“Thank you, Mommy! This soup is so yummy!” Her mom smiled and said,“I’m glad you like it, Lily.”They finished cooking and continued to cook together.The end.
 
 > **低资源/降级方案提示：在 CPU 或 Apple 芯片上生成文本**
 > 
 > 如果你使用的是处理了 4000 万个 token 的低资源配置，你应该会看到生成的文本仍然像英语，但不如上面的流畅。例如，我们在 4000 万个 token 上训练的 TinyStories 语言模型的样本输出如下：
 > 
-> 从前，有一个叫苏的小女孩。苏有一颗她非常喜欢的牙齿。那是他最好的头。有一天，苏去散步，遇到了一只瓢虫！他们成为了好朋友，在小路上一起玩耍。
-> “嘿，波利！我们出去吧！”蒂姆说。苏看着天空，发现很难找到发光跳舞的方法。她笑了，并同意帮忙说话！”
-> 当苏看着天空移动时，那是什么。她
+> Once upon a time,there was a little girl named Sue. Sue had a tooth that she loved very much. It was his best head. Oneday,Sue went for a walk and met a ladybug! They became good friends and played on the path together.
+> “Hey, Polly! Let’s go out!” said Tim. Sue looked at the sky and saw that it was difficult to find a way to dance shining. She smiled and agreed to help the talking!” 
+> As Sue watched the sky moved,what it was. She
 
 以下是精确的问题陈述及我们要求的内容：
 
